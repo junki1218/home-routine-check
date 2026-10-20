@@ -3,6 +3,11 @@
    - カードを1枚ずつ（カルーセル）
    - 「できた！」/「チェック待ち」/ 保護者の解除
    - 1か月分（31日）の記録を端末内に保存
+
+   演出の方針（Notion「UI/UX・アニメーション用語集」より）
+   - 動きには必ず目的を持たせる（操作の結果・状態の変化を伝える）
+   - 文字が動いている間も読めるようにする
+   - 感覚過敏に配慮し、「うごき」を減らせる設定を用意する
    =========================================================== */
 (function () {
   'use strict';
@@ -12,6 +17,7 @@
      --------------------------------------------------------- */
 
   var STORE_KEY  = 'homeRoutine.v1';
+  var MOTION_KEY = 'homeRoutine.motion';
   var KEEP_DAYS  = 31;     // 保存する日数
   var DAY_START  = 3;      // 深夜3時に日付が切り替わる
 
@@ -31,17 +37,46 @@
   // 9番は 1〜8 が全部済んでいないとチェックできない
   var REQUIRES = { 6:[1,2,3,4,5], 9:[1,2,3,4,5,6,7,8] };
 
+  // チェックしたときに出る短いことば（毎回同じだと飽きるので回す）
+  var PRAISE = ['いいね！', 'できた！', 'ナイス！', 'その調子！', 'おみごと！', 'やったね！'];
+
   /* ---------------------------------------------------------
-     2. 日付まわり
+     2. うごきの設定（感覚過敏への配慮）
+     --------------------------------------------------------- */
+
+  var motionOn = true;
+
+  function loadMotion() {
+    var v = null;
+    try { v = localStorage.getItem(MOTION_KEY); } catch (e) {}
+    if (v === 'off') return false;
+    if (v === 'on')  return true;
+    // 設定がなければ端末の「視差効果を減らす」に従う
+    try {
+      return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (e) { return true; }
+  }
+
+  function applyMotion() {
+    document.body.classList.toggle('motion-off', !motionOn);
+    var b = document.getElementById('btnMotion');
+    if (b) {
+      b.querySelector('.icon-btn-emoji').textContent = motionOn ? '✨' : '🤫';
+      b.querySelector('.icon-btn-label').textContent = motionOn ? 'うごく' : 'しずか';
+      b.setAttribute('aria-pressed', motionOn ? 'true' : 'false');
+      b.setAttribute('aria-label', motionOn ? 'うごきを減らす' : 'うごきを元にもどす');
+    }
+  }
+
+  /* ---------------------------------------------------------
+     3. 日付まわり
      --------------------------------------------------------- */
 
   function logicalDate(d) {
     // 深夜3時より前は「前の日」として扱う
     var t = new Date(d || Date.now());
     t.setHours(t.getHours() - DAY_START);
-    return t.getFullYear() + '-' +
-           pad(t.getMonth() + 1) + '-' +
-           pad(t.getDate());
+    return t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate());
   }
   function pad(n){ return (n < 10 ? '0' : '') + n; }
 
@@ -63,7 +98,7 @@
   }
 
   /* ---------------------------------------------------------
-     3. 保存（localStorage）
+     4. 保存（localStorage）
      --------------------------------------------------------- */
 
   var store = load();
@@ -84,22 +119,17 @@
 
   function prune() {
     var keys = Object.keys(store.days).sort();           // 古い順
-    while (keys.length > KEEP_DAYS) {
-      delete store.days[keys.shift()];
-    }
+    while (keys.length > KEEP_DAYS) delete store.days[keys.shift()];
   }
 
   function today() {
     var key = logicalDate();
     if (!store.days[key]) {
       var items = {};
-      CARDS.forEach(function (c) {
-        items[c.no] = { state:'todo', log:[] };
-      });
+      CARDS.forEach(function (c) { items[c.no] = { state:'todo', log:[] }; });
       store.days[key] = { date:key, startedAt:null, completedAt:null, items:items };
       save();
     }
-    // 項目が増減しても壊れないように補う
     var day = store.days[key];
     CARDS.forEach(function (c) {
       if (!day.items[c.no]) day.items[c.no] = { state:'todo', log:[] };
@@ -127,12 +157,11 @@
   }
 
   /* ---------------------------------------------------------
-     4. 判定
+     5. 判定
      --------------------------------------------------------- */
 
   function stateOf(no){ return today().items[no].state; }
 
-  /* その番号を「できた！」にできるか。できない場合は理由を返す */
   function checkGate(no) {
     var need = REQUIRES[no];
     if (!need) return { ok:true };
@@ -141,38 +170,31 @@
     var todo    = need.filter(function (n){ return stateOf(n) === 'todo'; });
 
     if (pending.length) {
-      return {
-        ok:false,
+      return { ok:false,
         reason: pending.join('・') + '番が「チェック待ち」です。\n' +
-                'おうちの人のOKが出てから、' + no + '番をチェックできます。'
-      };
+                'おうちの人のOKが出てから、' + no + '番をチェックできます。' };
     }
     if (todo.length) {
-      return {
-        ok:false,
+      return { ok:false,
         reason: todo.join('・') + '番がまだ終わっていません。\n' +
-                '先に ' + todo[0] + '番をすませましょう。'
-      };
+                '先に ' + todo[0] + '番をすませましょう。' };
     }
     return { ok:true };
   }
 
-  function allDone(){
-    return CARDS.every(function (c){ return stateOf(c.no) === 'done'; });
+  function doneCount(){
+    return CARDS.filter(function (c){ return stateOf(c.no) === 'done'; }).length;
   }
-  /* 今すぐチェックできるカードが残っているか
-     （残りが「他の番号待ち」ばかりなら false） */
+  function allDone(){ return doneCount() === CARDS.length; }
   function anyActionable(){
-    return CARDS.some(function (c){
-      return stateOf(c.no) === 'todo' && checkGate(c.no).ok;
-    });
+    return CARDS.some(function (c){ return stateOf(c.no) === 'todo' && checkGate(c.no).ok; });
   }
   function pendingList(){
     return CARDS.filter(function (c){ return stateOf(c.no) === 'pending'; });
   }
 
   /* ---------------------------------------------------------
-     5. 画面
+     6. 画面の部品
      --------------------------------------------------------- */
 
   var $ = function (id){ return document.getElementById(id); };
@@ -180,6 +202,8 @@
   var el = {
     headDate:  $('headDate'),
     dots:      $('dots'),
+    gaugeFill: $('gaugeFill'),
+    gaugeText: $('gaugeText'),
     screenCard:$('screenCard'),
     screenRem: $('screenRemaining'),
     screenDone:$('screenDone'),
@@ -202,20 +226,23 @@
     celebrate: $('celebrate'),
     btnComplete:$('btnComplete'),
     btnReview: $('btnReview'),
+    doneTitle: $('doneTitle'),
     doneStats: $('doneStats'),
+    stampRow:  $('stampRow'),
     btnParent: $('btnParent'),
+    btnMotion: $('btnMotion'),
     badge:     $('pendingBadge'),
     modal:     $('parentModal'),
     btnClose:  $('btnCloseParent'),
     confetti:  $('confetti')
   };
 
-  var cur = 0;            // 表示中のカードの添字（0〜8）
+  var cur = 0;
   var lastDayKey = logicalDate();
+  var praiseIdx = 0;
 
   function cardAt(i){ return CARDS[i]; }
 
-  /* ----- 最初に見せるカードを決める ----- */
   function firstOpenIndex() {
     for (var i = 0; i < CARDS.length; i++) {
       if (today().items[CARDS[i].no].state === 'todo') return i;
@@ -223,7 +250,6 @@
     return 0;
   }
 
-  /* ----- 次に未処理のカードへ ----- */
   function gotoNextOpen(dir) {
     var n = CARDS.length;
     for (var step = 1; step <= n; step++) {
@@ -233,19 +259,19 @@
     return false;
   }
 
-  function show(i, dir) {
-    cur = i;
-    render(dir);
-  }
+  function show(i, dir) { cur = i; render(dir); }
 
-  /* ----- 描画 ----- */
+  /* ---------------------------------------------------------
+     7. 描画
+     --------------------------------------------------------- */
+
   function render(dir) {
-    // 日付が変わっていたら新しい一日にする
     var k = logicalDate();
     if (k !== lastDayKey) { lastDayKey = k; today(); cur = firstOpenIndex(); }
 
     el.headDate.textContent = fmtDateLabel(k);
     renderDots();
+    renderGauge();
     renderBadge();
 
     if (allDone()) { showDone(); return; }
@@ -264,7 +290,6 @@
     el.cardTitle.textContent = c.title;
     renderArt(c);
 
-    // 状態の帯
     if (st === 'done') {
       el.cardStatus.hidden = false;
       el.cardStatus.className = 'card-status s-done';
@@ -277,7 +302,10 @@
       el.cardStatus.hidden = true;
     }
 
-    // できない理由
+    el.card.classList.toggle('is-done', st === 'done');
+    el.card.classList.toggle('is-pending', st === 'pending');
+    el.card.classList.toggle('is-locked', st === 'todo' && !gate.ok);
+
     if (st === 'todo' && !gate.ok) {
       el.blockNote.hidden = false;
       el.blockNote.textContent = gate.reason;
@@ -285,7 +313,6 @@
       el.blockNote.hidden = true;
     }
 
-    // ボタンの出し分け
     var isTodo = (st === 'todo');
     el.btnDone.hidden    = !(isTodo && gate.ok);
     el.btnPending.hidden = !(isTodo && gate.ok);
@@ -295,7 +322,7 @@
     el.btnUndo.querySelector('span:last-child').textContent =
       (st === 'pending') ? 'チェック待ちをやめる' : 'まちがえた（もどす）';
 
-    // カードの入れ替わりアニメーション
+    // カードの入れ替わり（ドリーイン風：少し奥から手前に寄ってくる）
     if (dir) {
       el.card.classList.remove('enter-right', 'enter-left');
       void el.card.offsetWidth;
@@ -303,8 +330,7 @@
     }
   }
 
-  /* 画像があれば使い、無ければ絵文字にする。
-     一度 404 だった番号は覚えておき、取りに行き直さない */
+  /* 画像は webp →（だめなら）jpg →（それもなければ）絵文字 */
   var artCache = {};   // no -> Image | false
 
   function renderArt(c) {
@@ -320,26 +346,53 @@
     span.textContent = c.emoji;
     el.cardArt.appendChild(span);
 
-    if (artCache[c.no] === false) return;   // 画像は無いと分かっている
+    if (artCache[c.no] === false) return;
 
-    var img = new Image();
-    img.alt = '';
-    img.onload = function () {
-      artCache[c.no] = img;
-      if (cardAt(cur).no === c.no) {
-        el.cardArt.innerHTML = '';
-        el.cardArt.appendChild(img.cloneNode());
-      }
-    };
-    img.onerror = function () { artCache[c.no] = false; };
-    img.src = 'assets/card' + c.no + '.png';
+    var srcs = ['assets/card' + c.no + '.webp', 'assets/card' + c.no + '.jpg'];
+    (function attempt(i) {
+      if (i >= srcs.length) { artCache[c.no] = false; return; }
+      var img = new Image();
+      img.alt = '';
+      img.decoding = 'async';
+      img.onload = function () {
+        artCache[c.no] = img;
+        if (cardAt(cur).no === c.no && !el.screenCard.hidden) {
+          el.cardArt.innerHTML = '';
+          el.cardArt.appendChild(img.cloneNode());
+        }
+      };
+      img.onerror = function () { attempt(i + 1); };
+      img.src = srcs[i];
+    })(0);
+  }
+
+  /* 先に読み込んでおくと、次のカードで絵が一瞬遅れない */
+  function preloadArt() {
+    CARDS.forEach(function (c) {
+      if (artCache[c.no] !== undefined) return;
+      var img = new Image();
+      img.onload  = function () { artCache[c.no] = img; };
+      img.onerror = function () {
+        var j = new Image();
+        j.onload  = function () { artCache[c.no] = j; };
+        j.onerror = function () { artCache[c.no] = false; };
+        j.src = 'assets/card' + c.no + '.jpg';
+      };
+      img.src = 'assets/card' + c.no + '.webp';
+    });
   }
 
   function renderDots() {
+    var prev = {};
+    Array.prototype.forEach.call(el.dots.children, function (b) {
+      prev[b.dataset.no] = b.className;
+    });
+
     el.dots.innerHTML = '';
     CARDS.forEach(function (c, i) {
       var b = document.createElement('button');
       b.className = 'dot';
+      b.dataset.no = c.no;
       b.textContent = c.no;
       b.setAttribute('aria-label', c.no + '番：' + c.title);
       var st = stateOf(c.no);
@@ -347,9 +400,25 @@
       if (st === 'pending') b.classList.add('is-pending');
       if (st === 'todo' && !checkGate(c.no).ok) b.classList.add('is-locked');
       if (i === cur && !allDone()) b.classList.add('is-current');
+
+      // 「まだ」→「できた」に変わった番号だけ、くるっと回して知らせる
+      var was = prev[c.no];
+      if (was !== undefined && was.indexOf('is-done') === -1 && st === 'done') {
+        b.classList.add('just-done');
+      }
       b.addEventListener('click', function () { show(i, i > cur ? 1 : -1); });
       el.dots.appendChild(b);
     });
+  }
+
+  /* 進み具合のゲージ（インフォグラフィック・アニメーション） */
+  function renderGauge() {
+    var n = doneCount(), total = CARDS.length;
+    el.gaugeFill.style.width = (n / total * 100) + '%';
+    el.gaugeFill.classList.toggle('is-full', n === total);
+    if (n === 0)            el.gaugeText.textContent = 'ぜんぶで ' + total + 'こ';
+    else if (n === total)   el.gaugeText.textContent = 'ぜんぶ できた！';
+    else                    el.gaugeText.textContent = n + ' / ' + total + '　あと ' + (total - n) + 'こ';
   }
 
   function renderBadge() {
@@ -358,17 +427,64 @@
     el.badge.textContent = n;
   }
 
-  /* ----- スタンプ演出 ----- */
+  /* ---------------------------------------------------------
+     8. 操作に対する反応（フィードバック）
+     --------------------------------------------------------- */
+
+  /* 大きなスタンプ */
   function stamp(kind) {
     var s = document.createElement('div');
     s.className = 'stamp ' + (kind === 'done' ? 's-done' : 's-pending');
     s.textContent = (kind === 'done' ? '✓' : '⏳');
     el.cardStage.appendChild(s);
-    setTimeout(function () { s.remove(); }, 520);
+    setTimeout(function () { s.remove(); }, 620);
+  }
+
+  /* ほめことば（キネティックタイポグラフィー：一文字ずつ出る） */
+  function praise() {
+    if (!motionOn) return;
+    var text = PRAISE[praiseIdx % PRAISE.length];
+    praiseIdx++;
+    var box = document.createElement('div');
+    box.className = 'praise';
+    text.split('').forEach(function (ch, i) {
+      var sp = document.createElement('span');
+      sp.textContent = ch;
+      sp.style.animationDelay = (i * 0.05) + 's';
+      box.appendChild(sp);
+    });
+    el.cardStage.appendChild(box);
+    setTimeout(function () { box.remove(); }, 1400);
+  }
+
+  /* キラキラがはじける */
+  function sparkle(n) {
+    if (!motionOn) return;
+    var box = document.createElement('div');
+    box.className = 'sparkles';
+    for (var i = 0; i < (n || 12); i++) {
+      var s = document.createElement('i');
+      var a = (Math.PI * 2 * i) / (n || 12) + Math.random() * 0.4;
+      var d = 70 + Math.random() * 70;
+      s.style.setProperty('--dx', Math.cos(a) * d + 'px');
+      s.style.setProperty('--dy', Math.sin(a) * d + 'px');
+      s.style.animationDelay = (Math.random() * 0.12) + 's';
+      box.appendChild(s);
+    }
+    el.cardStage.appendChild(box);
+    setTimeout(function () { box.remove(); }, 1000);
+  }
+
+  /* カードがひとつ弾む */
+  function bump(cls) {
+    el.card.classList.remove('bump-done', 'bump-pending');
+    void el.card.offsetWidth;
+    el.card.classList.add(cls);
+    setTimeout(function () { el.card.classList.remove(cls); }, 600);
   }
 
   /* ---------------------------------------------------------
-     6. のこり画面 / 完了画面
+     9. のこり画面 / 完了画面
      --------------------------------------------------------- */
 
   function showRemaining() {
@@ -383,6 +499,7 @@
       var li = document.createElement('li');
       var b  = document.createElement('button');
       b.className = 'remain-item' + (st === 'pending' ? ' r-pending' : '');
+      b.style.animationDelay = (el.remList.children.length * 0.06) + 's';
       b.innerHTML = '<span class="rno">' + c.no + '</span>';
       var tx = document.createElement('span');
       var suffix = '';
@@ -398,6 +515,7 @@
 
   function showDone() {
     renderDots();
+    renderGauge();
     renderBadge();
     el.screenCard.hidden = true;
     el.screenRem.hidden  = true;
@@ -407,11 +525,49 @@
     if (day.completedAt) {
       el.doneInner.hidden = true;
       el.celebrate.hidden = false;
+      kineticTitle('ぜんぶ おわりました！');
       el.doneStats.textContent = statsText(day);
+      renderStampRow(day);
     } else {
       el.doneInner.hidden = false;
       el.celebrate.hidden = true;
     }
+  }
+
+  /* 完了の見出しを一文字ずつ出す（短時間で終わらせ、読みは妨げない） */
+  function kineticTitle(text) {
+    el.doneTitle.innerHTML = '';
+    if (!motionOn) { el.doneTitle.textContent = text; return; }
+    text.split('').forEach(function (ch, i) {
+      var sp = document.createElement('span');
+      sp.className = 'kt';
+      sp.textContent = (ch === ' ' ? ' ' : ch);
+      sp.style.animationDelay = (0.25 + i * 0.045) + 's';
+      el.doneTitle.appendChild(sp);
+    });
+  }
+
+  /* きょうのスタンプ（9枚のミニ絵が順に並ぶ） */
+  function renderStampRow(day) {
+    el.stampRow.innerHTML = '';
+    CARDS.forEach(function (c, i) {
+      var d = document.createElement('div');
+      d.className = 'mini';
+      d.style.animationDelay = (0.5 + i * 0.07) + 's';
+      d.title = c.no + '　' + fmtTime(day.items[c.no].checkedAt);
+      var art = artCache[c.no];
+      if (art instanceof Image) {
+        var im = art.cloneNode(); im.alt = '';
+        d.appendChild(im);
+      } else {
+        d.textContent = c.emoji;
+      }
+      var tick = document.createElement('span');
+      tick.className = 'mini-tick';
+      tick.textContent = '✓';
+      d.appendChild(tick);
+      el.stampRow.appendChild(d);
+    });
   }
 
   function statsText(day) {
@@ -424,36 +580,37 @@
   }
 
   /* ---------------------------------------------------------
-     7. 紙吹雪
+     10. 紙吹雪
      --------------------------------------------------------- */
 
   function confetti() {
+    if (!motionOn) return;
     var cv = el.confetti;
     cv.hidden = false;
     var ctx = cv.getContext('2d');
     var dpr = window.devicePixelRatio || 1;
     cv.width  = cv.clientWidth  * dpr;
     cv.height = cv.clientHeight * dpr;
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     var W = cv.clientWidth, H = cv.clientHeight;
     var colors = ['#3a7bd5', '#2f9e63', '#e8a33d', '#d75b86', '#7d62c7', '#2f9aa6'];
     var bits = [];
-    for (var i = 0; i < 110; i++) {
+    for (var i = 0; i < 130; i++) {
       bits.push({
         x: Math.random() * W,
-        y: -20 - Math.random() * H * 0.6,
+        y: -20 - Math.random() * H * 0.7,
         w: 7 + Math.random() * 7,
         h: 10 + Math.random() * 10,
-        vy: 1.6 + Math.random() * 2.6,
-        vx: -0.8 + Math.random() * 1.6,
+        vy: 1.6 + Math.random() * 2.8,
+        vx: -0.9 + Math.random() * 1.8,
         rot: Math.random() * Math.PI,
-        vr: -0.09 + Math.random() * 0.18,
+        vr: -0.1 + Math.random() * 0.2,
         c: colors[(Math.random() * colors.length) | 0]
       });
     }
 
-    var end = Date.now() + 3600;
+    var end = Date.now() + 4200;
     (function frame() {
       ctx.clearRect(0, 0, W, H);
       bits.forEach(function (b) {
@@ -475,7 +632,7 @@
   }
 
   /* ---------------------------------------------------------
-     8. 保護者用モーダル
+     11. 保護者用モーダル
      --------------------------------------------------------- */
 
   function openParent(tab) {
@@ -523,8 +680,8 @@
       ok.textContent = 'OK';
       ok.addEventListener('click', function () {
         record(c.no, 'release', { by:'parent' });
-        renderPendingPanel();
-        renderBadge();
+        row.classList.add('released');
+        setTimeout(function () { renderPendingPanel(); renderBadge(); }, 320);
       });
       row.appendChild(ok);
       box.appendChild(row);
@@ -532,8 +689,7 @@
   }
 
   function renderTodayPanel() {
-    var box = document.querySelector('.tab-panel[data-panel="today"]');
-    box.innerHTML = dayDetailHTML(today(), true);
+    document.querySelector('.tab-panel[data-panel="today"]').innerHTML = dayDetailHTML(today(), true);
   }
 
   function renderHistoryPanel() {
@@ -547,8 +703,7 @@
       return '<details class="h-day">' +
                '<summary>' + fmtDateLabel(k) +
                  '<span class="h-chip ' + cls + '">' + done + ' / ' + CARDS.length + '</span>' +
-               '</summary>' +
-               dayDetailHTML(day, false) +
+               '</summary>' + dayDetailHTML(day, false) +
              '</details>';
     }).join('');
   }
@@ -558,8 +713,7 @@
       var it = (day.items && day.items[c.no]) || { state:'todo' };
       var label = it.state === 'done' ? 'できた' : (it.state === 'pending' ? 'チェック待ち' : 'まだ');
       var t = it.state === 'done'    ? fmtTime(it.checkedAt)
-            : it.state === 'pending' ? fmtTime(it.pendingAt)
-            : '';
+            : it.state === 'pending' ? fmtTime(it.pendingAt) : '';
       var extra = (it.releasedAt ? '（保護者OK ' + fmtTime(it.releasedAt) + '）' : '');
       return '<li>' +
                '<span class="hn">' + c.no + '</span>' +
@@ -572,38 +726,38 @@
     if (withHead) {
       head = '<p class="remain-note">' +
              (day.startedAt ? 'はじめ ' + fmtTime(day.startedAt) : 'まだ始まっていません') +
-             (day.completedAt ? '　／　完了 ' + fmtTime(day.completedAt) : '') +
-             '</p>';
+             (day.completedAt ? '　／　完了 ' + fmtTime(day.completedAt) : '') + '</p>';
     }
     return head + '<ul class="h-list">' + rows + '</ul>';
   }
 
   /* ---------------------------------------------------------
-     9. 操作
+     12. 操作
      --------------------------------------------------------- */
 
   el.btnDone.addEventListener('click', function () {
     var c = cardAt(cur);
     if (!checkGate(c.no).ok) { render(); return; }
     record(c.no, 'done');
-    stamp('done');
+    stamp('done'); sparkle(14); praise(); bump('bump-done');
+    renderDots(); renderGauge();
     setTimeout(function () {
       if (allDone()) { showDone(); return; }
-      if (!gotoNextOpen(1)) { renderDots(); renderBadge(); showRemaining(); }
-    }, 420);
+      if (!gotoNextOpen(1)) { renderBadge(); showRemaining(); }
+    }, motionOn ? 760 : 200);
   });
 
   el.btnPending.addEventListener('click', function () {
     var c = cardAt(cur);
     record(c.no, 'pending');
-    stamp('pending');
+    stamp('pending'); bump('bump-pending');
+    renderDots(); renderGauge(); renderBadge();
     setTimeout(function () {
-      if (!gotoNextOpen(1)) { renderDots(); renderBadge(); showRemaining(); }
-    }, 420);
+      if (!gotoNextOpen(1)) { showRemaining(); }
+    }, motionOn ? 620 : 200);
   });
 
   el.btnSkip.addEventListener('click', function () {
-    // チェックできるカードが残っていなければ、堂々巡りにせず一覧を見せる
     if (!anyActionable()) { renderDots(); renderBadge(); showRemaining(); return; }
     if (!gotoNextOpen(1)) showRemaining();
   });
@@ -626,10 +780,16 @@
   });
 
   el.btnReview.addEventListener('click', function () { openParent('today'); });
-
   el.btnParent.addEventListener('click', function () { openParent('pending'); });
   el.btnClose.addEventListener('click', closeParent);
   el.modal.addEventListener('click', function (e) { if (e.target === el.modal) closeParent(); });
+
+  el.btnMotion.addEventListener('click', function () {
+    motionOn = !motionOn;
+    try { localStorage.setItem(MOTION_KEY, motionOn ? 'on' : 'off'); } catch (e) {}
+    applyMotion();
+  });
+
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
     t.addEventListener('click', function () { selectTab(t.dataset.tab); });
   });
@@ -652,27 +812,26 @@
     }, { passive:true });
   })();
 
-  // 画面を開きっぱなしにしていても日付をまたいだら更新する
-  setInterval(function () {
-    if (logicalDate() !== lastDayKey) render();
-  }, 60000);
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) render();
-  });
+  setInterval(function () { if (logicalDate() !== lastDayKey) render(); }, 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) render(); });
 
   /* ---------------------------------------------------------
-     10. 起動
+     13. 起動
      --------------------------------------------------------- */
 
+  motionOn = loadMotion();
+  applyMotion();
   today();
   save();                 // 起動時に 31 日より古い記録を捨てる
   cur = firstOpenIndex();
   render();
+  preloadArt();
 
   // デバッグ・検品用
   window.__routine = {
     store: store,
     reset: function () { try { localStorage.removeItem(STORE_KEY); } catch (e) {} location.reload(); },
-    set: function (no, action) { record(no, action); render(); }
+    set: function (no, action) { record(no, action); render(); },
+    motion: function (on) { motionOn = !!on; applyMotion(); }
   };
 })();

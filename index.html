@@ -18,14 +18,24 @@
       <div class="head-title">帰宅後のルーティン</div>
       <div class="head-date" id="headDate">—</div>
     </div>
-    <button id="btnParent" class="icon-btn" aria-label="保護者用の画面をひらく">
-      <span class="icon-btn-emoji">👨‍👩‍👦</span>
-      <span class="icon-btn-label">保護者</span>
-      <span id="pendingBadge" class="badge" hidden>0</span>
-    </button>
+    <div class="head-btns">
+      <button id="btnMotion" class="icon-btn" aria-pressed="true" aria-label="うごきを減らす">
+        <span class="icon-btn-emoji">✨</span>
+        <span class="icon-btn-label">うごく</span>
+      </button>
+      <button id="btnParent" class="icon-btn" aria-label="保護者用の画面をひらく">
+        <span class="icon-btn-emoji">👨‍👩‍👦</span>
+        <span class="icon-btn-label">保護者</span>
+        <span id="pendingBadge" class="badge" hidden>0</span>
+      </button>
+    </div>
   </header>
 
   <!-- ===== 進み具合 ===== -->
+  <div id="gauge">
+    <div class="gauge-track"><div class="gauge-fill" id="gaugeFill"></div></div>
+    <div class="gauge-text" id="gaugeText">—</div>
+  </div>
   <nav id="dots" aria-label="全体の進み具合"></nav>
 
   <!-- ===== カード画面 ===== -->
@@ -82,7 +92,8 @@
     </div>
     <div id="celebrate" hidden>
       <div class="done-mark big">🎊</div>
-      <h2 class="done-title">ぜんぶ おわりました！</h2>
+      <h2 class="done-title" id="doneTitle">ぜんぶ おわりました！</h2>
+      <div id="stampRow" class="stamp-row"></div>
       <p id="doneStats" class="done-stats"></p>
       <button id="btnReview" class="btn btn-wide">きょうの記録をみる</button>
     </div>
