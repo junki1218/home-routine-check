@@ -93,6 +93,13 @@ body.motion-off *::after{
 .icon-btn-emoji{ font-size:20px; line-height:1; }
 .icon-btn-label{ font-size:11px; color:var(--ink-soft); }
 #btnMotion[aria-pressed="false"]{ background:#eef2f7; }
+.lock-badge{
+  position:absolute; bottom:-6px; right:-6px;
+  width:22px; height:22px; border-radius:50%;
+  background:var(--white); border:2px solid var(--line);
+  font-size:11px; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+}
 .badge{
   position:absolute; top:-7px; right:-7px;
   min-width:24px; height:24px; padding:0 6px;
@@ -173,9 +180,10 @@ body.motion-off *::after{
 .screen-title{ font-size:20px; margin:4px 0 12px; }
 
 /* ---------- カード ---------- */
-#cardStage{ flex:1; display:flex; min-height:0; position:relative; perspective:900px; }
+#cardStage{ flex:1; display:flex; min-height:0; position:relative; perspective:800px; }
 
 .card{
+  transform-style:preserve-3d;
   flex:1; display:flex; flex-direction:column; min-height:0;
   background:var(--white);
   border:3px solid var(--c-main, var(--line));
@@ -230,17 +238,42 @@ body.motion-off *::after{
 .card-status.s-pending{ background:var(--pending); }
 @keyframes slideUpIn{ from{ transform:translateY(100%); } to{ transform:none; } }
 
-/* カードの入れ替わり：ドリーイン風（奥から手前に寄ってくる） */
-@keyframes dollyRight{
-  from{ transform:translateX(34px) scale(.9); opacity:0; }
+/* ---------- カードの入れ替わり（3Dで回りながら飛んでいく） ---------- */
+/* 出ていく：手前に回り込みながら小さくなって消える */
+@keyframes flyOutLeft{
+  0%  { transform:none; opacity:1; }
+  100%{ transform:translateX(-58%) translateY(10px) rotateY(42deg) rotateZ(-7deg) scale(.68); opacity:0; }
+}
+@keyframes flyOutRight{
+  0%  { transform:none; opacity:1; }
+  100%{ transform:translateX(58%) translateY(10px) rotateY(-42deg) rotateZ(7deg) scale(.68); opacity:0; }
+}
+.card.exit-right{ animation:flyOutLeft  .23s cubic-bezier(.55,0,.85,.3) both; }
+.card.exit-left { animation:flyOutRight .23s cubic-bezier(.55,0,.85,.3) both; }
+
+/* 入ってくる：奥から回って飛び込み、最後にひと弾み */
+@keyframes flyInRight{
+  0%  { transform:translateX(62%) translateY(14px) rotateY(-46deg) rotateZ(8deg) scale(.62); opacity:0; }
+  55% { transform:translateX(-3%) translateY(-4px) rotateY(7deg)  rotateZ(-1.5deg) scale(1.05); opacity:1; }
+  78% { transform:translateX(1%)  rotateY(-3deg) scale(.98); }
+  100%{ transform:none; opacity:1; }
+}
+@keyframes flyInLeft{
+  0%  { transform:translateX(-62%) translateY(14px) rotateY(46deg) rotateZ(-8deg) scale(.62); opacity:0; }
+  55% { transform:translateX(3%)  translateY(-4px) rotateY(-7deg) rotateZ(1.5deg) scale(1.05); opacity:1; }
+  78% { transform:translateX(-1%) rotateY(3deg) scale(.98); }
+  100%{ transform:none; opacity:1; }
+}
+.card.enter-right{ animation:flyInRight .52s cubic-bezier(.2,.8,.25,1) both; }
+.card.enter-left { animation:flyInLeft  .52s cubic-bezier(.2,.8,.25,1) both; }
+
+/* 中身も少し遅れて出てくると、奥行きが出る */
+.card.enter-right .card-head, .card.enter-left .card-head{ animation:layerIn .42s .06s ease-out both; }
+.card.enter-right .card-art,  .card.enter-left .card-art { animation:layerIn .42s .13s ease-out both; }
+@keyframes layerIn{
+  from{ transform:translateZ(0) scale(.92); opacity:.2; }
   to  { transform:none; opacity:1; }
 }
-@keyframes dollyLeft{
-  from{ transform:translateX(-34px) scale(.9); opacity:0; }
-  to  { transform:none; opacity:1; }
-}
-.card.enter-right{ animation:dollyRight .3s cubic-bezier(.2,.9,.3,1) both; }
-.card.enter-left { animation:dollyLeft  .3s cubic-bezier(.2,.9,.3,1) both; }
 
 /* チェックしたときカードが弾む */
 .card.bump-done{ animation:bumpDone .55s cubic-bezier(.25,1.4,.45,1) both; }
@@ -451,11 +484,12 @@ body.motion-off *::after{
   background:var(--white); border:1px solid var(--line);
   font-size:18px; color:var(--ink-soft); cursor:pointer;
 }
-.tabs{ display:flex; gap:8px; padding:0 18px 12px; }
+.tabs{ display:flex; gap:6px; padding:0 18px 12px; }
 .tab{
   flex:1; min-height:46px; border-radius:14px;
   background:var(--white); border:2px solid var(--line);
-  font-family:inherit; font-size:14px; font-weight:700; color:var(--ink-soft);
+  font-family:inherit; font-size:13px; font-weight:700; color:var(--ink-soft);
+  white-space:nowrap; padding:0 4px;
   cursor:pointer; transition:background .2s ease, color .2s ease, border-color .2s ease;
 }
 .tab.is-active{ background:var(--blue); border-color:var(--blue); color:#fff; }
@@ -507,6 +541,99 @@ body.motion-off *::after{
 .h-state.done{ background:var(--green-bg); color:var(--done); }
 .h-state.pending{ background:#fdf3dc; color:#a6761c; }
 .h-state.todo{ background:var(--line); color:var(--ink-soft); }
+
+/* ---------- 「きょう」タブ：やりなおし ---------- */
+.t-row .rno{ background:var(--line); color:var(--ink); }
+.t-row .rno.st-done{ background:var(--done); color:#fff; }
+.t-row .rno.st-pending{ background:var(--pending); color:#fff; }
+.t-row.redone{ transform:translateX(-30px); opacity:0; }
+.p-redo{
+  flex:0 0 auto; min-height:44px; padding:0 14px;
+  background:var(--white); color:var(--ink-soft);
+  border:2px solid var(--line); border-radius:14px;
+  font-family:inherit; font-size:14px; font-weight:800; cursor:pointer;
+}
+.p-redo:active{ transform:scale(.94); background:#f1f5fa; }
+
+/* ---------- 「せってい」タブ ---------- */
+.set-card{
+  background:var(--white); border:2px solid var(--line);
+  border-radius:18px; padding:16px; margin-bottom:12px;
+}
+.set-title{ font-size:17px; font-weight:800; margin-bottom:8px; }
+.set-state{ font-size:15px; font-weight:800; margin-bottom:10px; }
+.set-state.on{ color:var(--done); }
+.set-state.off{ color:var(--ink-soft); }
+.set-desc{ font-size:14px; color:var(--ink-soft); margin:0 0 14px; line-height:1.6; }
+.set-btns{ display:flex; gap:10px; flex-wrap:wrap; }
+.set-btn{
+  flex:1; min-width:130px; min-height:52px;
+  border-radius:14px; border:none;
+  font-family:inherit; font-size:16px; font-weight:800; color:#fff;
+  cursor:pointer;
+}
+.set-btn:active{ transform:scale(.97); }
+.set-primary{ background:var(--blue); }
+.set-danger{ background:var(--white); color:var(--red); border:2px solid var(--red); }
+
+/* ---------- パターン認証 ---------- */
+.lock-modal{ align-items:center; z-index:200; }
+.lock-box{
+  width:min(92vw, 380px);
+  background:var(--bg);
+  border-radius:24px;
+  padding:22px 20px calc(18px + env(safe-area-inset-bottom));
+  text-align:center;
+  animation:lockIn .22s cubic-bezier(.2,1.2,.4,1) both;
+}
+@keyframes lockIn{ from{ transform:scale(.88); opacity:0; } to{ transform:none; opacity:1; } }
+.lock-box h2{ margin:0 0 6px; font-size:20px; }
+.lock-msg{ margin:0 0 16px; font-size:14px; color:var(--ink-soft); min-height:1.4em; }
+.lock-msg.is-error{ color:var(--red); font-weight:800; }
+
+.lock-grid{
+  position:relative;
+  width:min(74vw, 270px); aspect-ratio:1/1;
+  margin:0 auto 18px;
+  display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+  gap:14px;
+  touch-action:none;
+}
+.lock-grid.shake{ animation:shake .38s ease-in-out both; }
+@keyframes shake{
+  0%,100%{ transform:translateX(0); }
+  20%    { transform:translateX(-10px); }
+  40%    { transform:translateX(10px); }
+  60%    { transform:translateX(-6px); }
+  80%    { transform:translateX(6px); }
+}
+.lock-svg{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:1; }
+.lock-line{
+  fill:none; stroke:var(--blue); stroke-width:8;
+  stroke-linecap:round; stroke-linejoin:round; opacity:.55;
+}
+.lk{
+  position:relative; z-index:2;
+  border-radius:50%;
+  border:3px solid var(--line); background:var(--white);
+  padding:0; cursor:pointer;
+  transition:background .15s ease, border-color .15s ease, transform .15s ease;
+}
+.lk::after{
+  content:""; position:absolute; inset:0; margin:auto;
+  width:30%; height:30%; border-radius:50%;
+  background:var(--line);
+  transition:background .15s ease, transform .15s ease;
+}
+.lk.on{ border-color:var(--blue); background:var(--blue-bg); }
+.lk.on::after{ background:var(--blue); transform:scale(1.5); }
+.lk.pulse{ animation:lkPulse .3s ease-out both; }
+@keyframes lkPulse{
+  0%  { transform:scale(1); box-shadow:0 0 0 0 rgba(58,123,213,.5); }
+  100%{ transform:scale(1); box-shadow:0 0 0 14px rgba(58,123,213,0); }
+}
+.lock-actions{ display:flex; flex-direction:column; gap:10px; }
+.lock-sub{ display:flex; gap:10px; }
 
 /* ---------- 横長・大画面 ---------- */
 @media (min-width:700px) and (orientation:landscape){

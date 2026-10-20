@@ -23,10 +23,15 @@
         <span class="icon-btn-emoji">✨</span>
         <span class="icon-btn-label">うごく</span>
       </button>
+      <button id="btnSound" class="icon-btn" aria-pressed="true" aria-label="音を消す">
+        <span class="icon-btn-emoji">🔊</span>
+        <span class="icon-btn-label">おと</span>
+      </button>
       <button id="btnParent" class="icon-btn" aria-label="保護者用の画面をひらく">
         <span class="icon-btn-emoji">👨‍👩‍👦</span>
         <span class="icon-btn-label">保護者</span>
         <span id="pendingBadge" class="badge" hidden>0</span>
+        <span id="lockBadge" class="lock-badge" hidden>🔒</span>
       </button>
     </div>
   </header>
@@ -110,14 +115,34 @@
       <button id="btnCloseParent" class="close-btn" aria-label="とじる">✕</button>
     </div>
     <div class="tabs">
-      <button class="tab is-active" data-tab="pending">チェック待ち</button>
+      <button class="tab is-active" data-tab="pending">OK待ち</button>
       <button class="tab" data-tab="today">きょう</button>
-      <button class="tab" data-tab="history">記録（1か月）</button>
+      <button class="tab" data-tab="history">記録</button>
+      <button class="tab" data-tab="settings">せってい</button>
     </div>
     <div class="modal-body">
       <div class="tab-panel" data-panel="pending"></div>
       <div class="tab-panel" data-panel="today" hidden></div>
       <div class="tab-panel" data-panel="history" hidden></div>
+      <div class="tab-panel" data-panel="settings" hidden></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== パターン認証 ===== -->
+<div id="lockOverlay" class="modal lock-modal" hidden>
+  <div class="lock-box" role="dialog" aria-modal="true" aria-label="パターン認証">
+    <h2 id="lockTitle">パターンを 入力してください</h2>
+    <p id="lockMsg" class="lock-msg"></p>
+    <div id="lockGrid" class="lock-grid">
+      <svg id="lockPath" class="lock-svg" aria-hidden="true"></svg>
+    </div>
+    <div class="lock-actions">
+      <button id="lockOk" class="btn btn-wide" disabled>けってい</button>
+      <div class="lock-sub">
+        <button id="lockClear" class="nav-btn">やりなおす</button>
+        <button id="lockCancel" class="nav-btn">やめる</button>
+      </div>
     </div>
   </div>
 </div>
